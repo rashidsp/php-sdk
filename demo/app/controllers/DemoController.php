@@ -24,6 +24,7 @@ class DemoController
             'event_key'=> $config['event_key'],
             'project_configuration_json'=> json_decode($config['project_configuration_json'])
         );
+        $configArray = array('status' => '0') + $configArray;
         return $response->withJson($configArray);
     }
 
@@ -52,7 +53,7 @@ class DemoController
             $config = array('status' => '0') + $config;
             return $response->withJson($config);
         }else{
-            return $response->withJson(['status'=> '1']);
+            return $response->withJson(['status'=> '003']);
         }
     }
     public function selectVisitor($request, $response, $args)
@@ -60,14 +61,13 @@ class DemoController
         $params = $request->getParams();
         $visitor = $params['user_id'];
 
-        if (!$visitor) return $response->withJson(['status'=> '1','message'=>'vistor ID can not be empty.']);
+        if (!$visitor) return $response->withJson(['status'=> '004']);
         $config = $this->session->config;
-        if (!$config) return $response->withJson(['status'=> '1','message'=>'project ID does not exist.']);
-        if (!$config['project_configuration_json']) return $response->withJson(
-            ['status'=> '1','message'=>'Datafile can not be empty.']
-        );
+        if (!$config) return $response->withJson(['status'=> '002']);
+        if (!$config['project_configuration_json']) return $response->withJson(['status'=> '003']);
+
         $optimizely_service = new OptimizelyService($config['project_configuration_json']);
-        $variation = $optimizely_service->activate($visitor, $config['experiment_key']);
+        $variation = $optimizely_service->activateService($visitor, $config['experiment_key']);
         $products = Product::getProducts();
         if ($variation == "sort_by_name"){
             $sortArray = $this->sortProducts("name", $products);
@@ -85,21 +85,25 @@ class DemoController
 
     public function listProducts($request, $response, $args)
     {
-        return $response->withJson(Product::getProducts());
+        return $response->withJson(['status'=> '0','products'=>Product::getProducts()]);
     }
 
     public function buy($request, $response, $args){
         $params = $request->getParams();
         $visitor = $params['user_id'];
-        if (!$visitor) return $response->withJson(['status'=> '1','message'=>'vistor ID can not be empty.']);
+        $productId = $params['product_id'];
+
+
+        if (!$visitor) return $response->withJson(['status'=> '004']);
+        if (!$productId) return $response->withJson(['status'=> '005']);
+
         $config = $this->session->config;
-        if (!$config) return $response->withJson(['status'=> '1','message'=>'project ID does not exist.']);
-        if (!$config['project_configuration_json']) return $response->withJson(
-            ['status'=> '1','message'=>'Datafile can not be empty.']
-        );
+
+        if (!$config) return $response->withJson(['status'=> '002']);
+        if (!$config['project_configuration_json']) return $response->withJson(['status'=> '003']);
 
         $optimizely_service = new OptimizelyService($config['project_configuration_json']);
-        $optimizely_service->track($visitor, $config['event_key']);
+        $optimizely_service->trackService($config['event_key'], $visitor, Product::eventTags());
 
         return $response->withJson([
             'status'=> '0'
@@ -109,7 +113,8 @@ class DemoController
     public function messages($request, $response, $args)
     {
         $logs = $this->session->logs;
-        return $response->withJson($logs);
+        $reversedArray = array_reverse($logs['data']);
+        return $response->withJson(['data'=>$reversedArray]);
     }
 
     public function clearMessages($request, $response, $args)
@@ -143,13 +148,13 @@ class OptimizelyService {
         $this->optimizelyClient = $this->initOpti();
     }
 
-    public function activate($visitor, $experiment_key){
+    public function activateService($visitor, $experiment_key){
         $variation = $this->optimizelyClient->activate($experiment_key, $visitor);
         return $variation;
     }
 
-    public function track($event_key, $visitor){
-        $this->optimizelyClient->track($event_key, $visitor);
+    public function trackService($eventKey, $visitor, $eventTags){
+        $this->optimizelyClient->track($eventKey, $visitor, null, $eventTags);
     }
 
     function initOpti(){
@@ -209,12 +214,25 @@ class Product {
     public static function getProducts($index = false) {
         return $index !== false ? self::$products[$index] : self::$products;
     }
+
+    public static function eventTags() {
+        return array([
+            'int_param'=> 4242,
+            'string_param'=> "4242",
+            'bool_param'=> true,
+            'revenue'=> 1337,
+            'value'=> 100
+        ]);
+    }
+
 }
 
 
 
 class DemoLogger implements LoggerInterface
 {
+
+
     public function __construct($minLevel = Logger::INFO)
     {
         $formatter = new LineFormatter("[%datetime%] %channel%.%level_name%: %message%\n");
@@ -226,10 +244,11 @@ class DemoLogger implements LoggerInterface
     }
     public function log($logLevel, $logMessage)
     {
-
+        $levels = array('DEBUG'=> 0,'INFO'=>100,'WARN'=> 200,'ERROR'=> 300,'FATAL'=> 400);
+        $key = array_search($logLevel,$levels);
         $logArray = array(
-            'Timestamp'=>date("Y-m-d H:i:s"),
-            'level'=> $logLevel,
+            'timestamp'=>date("Y-m-d H:i:s"),
+            'level'=> $key,
             'message'=> $logMessage
         );
         $this->session->merge('logs', ['data' => [$logArray]]);

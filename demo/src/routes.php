@@ -8,6 +8,7 @@ use Slim\Http\Response;
 $app->get('/', function (Request $request, Response $response, array $args){
     // Render index view
     return $response->withJson([
+        'status'=> '0',
         'sdk_title'=> 'PHP SDK',
         'doc_link'=>'https://developers.optimizely.com/x/solutions/sdks/reference/index.html?language=php'
     ]);
